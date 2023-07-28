@@ -199,32 +199,39 @@ class Chatbot:
                             data = line[6:]
                             if data.startswith("{"):
                                 try:
-                                    data_list.append(json.loads(data))
+                                   data_list.append(json.loads(data))
                                 except Exception as e:
-                                    logger.warning(f"ChatGPT数据解析未知错误：{e}: {data}")
+                                   logger.warning(f"ChatGPT数据解析未知错误：{e}: {data}")
+
                     if not data_list:
                         return "ChatGPT 服务器未返回任何内容"
-                    idx = -1
-                    while data_list[idx]["error"]:
-                        idx -= 1
-                    response = data_list[idx]
-                self.parent_id = response["message"]["id"]
-                self.conversation_id = response["conversation_id"]
-                not_complete = ""
-                if not response["message"].get("end_turn", True):
+
+        last_error_idx = None
+        for idx, data in enumerate(data_list):
+            if "error" in data:
+                last_error_idx = idx
+
+        if last_error_idx is None:
+            return "ChatGPT 服务器返回的数据不包含错误信息"
+
+        response = data_list[last_error_idx]
+        self.parent_id = response["message"]["id"]
+        self.conversation_id = response["conversation_id"]
+        not_complete = ""
+        if not response["message"].get("end_turn", True):
                     if self.auto_continue:
                         logger.info("ChatGPT自动续写中...")
                         await asyncio.sleep(3)
                         return await self.get_chat_response("", True)
                     else:
                         not_complete = "\nis_complete: False"
-                elif is_continue:
+        elif is_continue:
                     if response["message"].get("end_turn"):
                         response = await self.get_conversasion_message_response(
                             self.conversation_id, self.parent_id
                         )
-                msg = "".join(response["message"]["content"]["parts"])
-                if self.metadata:
+        msg = "".join(response["message"]["content"]["parts"])
+        if self.metadata:
                     msg += "\n---"
                     msg += (
                         f"\nmodel_slug: {response['message']['metadata']['model_slug']}"
@@ -232,7 +239,7 @@ class Chatbot:
                     msg += not_complete
                     if is_continue:
                         msg += "\nauto_continue: True"
-                return msg
+        return msg
 
     async def edit_title(self, title: str) -> bool:
         async with httpx.AsyncClient(
